@@ -35,6 +35,12 @@ const teacherEmails = new Set(
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean)
 );
+const dualRoleEmails = new Set(
+  (process.env.DUAL_ROLE_EMAILS || 'talbot.dylan@cheverus.org')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+);
 const allowedDomain = (process.env.ALLOWED_GOOGLE_DOMAIN || 'cheverus.org').trim().toLowerCase();
 const teacherEmailPattern = new RegExp(
   process.env.TEACHER_EMAIL_PATTERN || '^[a-z]+@cheverus\\.org$',
@@ -213,25 +219,34 @@ function isGoogleConfigured() {
   return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 }
 
-function userRole(email) {
-  const normalizedEmail = email.toLowerCase();
-  if (teacherEmails.has(normalizedEmail) || teacherEmailPattern.test(normalizedEmail)) {
-    return 'teacher';
-  }
-  if (studentEmailPattern.test(normalizedEmail)) {
-    return 'student';
-  }
-  return null;
-}
-
 function publicUser(user) {
   if (!user) return null;
+  const roles = allowedRoles(user.email);
   return {
     email: user.email,
     name: user.name,
     picture: user.picture,
     role: user.role,
+    roles,
   };
+}
+
+function allowedRoles(email) {
+  const normalizedEmail = String(email || '').toLowerCase();
+  const roles = [];
+  if (teacherEmails.has(normalizedEmail) || teacherEmailPattern.test(normalizedEmail) || dualRoleEmails.has(normalizedEmail)) {
+    roles.push('teacher');
+  }
+  if (studentEmailPattern.test(normalizedEmail) || dualRoleEmails.has(normalizedEmail)) {
+    roles.push('student');
+  }
+  return roles;
+}
+
+function userRole(email) {
+  const roles = allowedRoles(email);
+  if (roles.includes('student')) return 'student';
+  return roles[0] || null;
 }
 
 async function currentUser(req) {
@@ -296,6 +311,27 @@ app.get('/api/me', async (req, res) => {
       redirectUri: `${getBaseUrl(req)}/auth/google/callback`,
       user: publicUser(user),
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/role', requireAuth, async (req, res) => {
+  try {
+    const desiredRole = String(req.body.role || '').toLowerCase();
+    const roles = allowedRoles(req.user.email);
+    if (!roles.includes(desiredRole)) {
+      return res.status(403).json({ error: 'Role change not permitted for this account.' });
+    }
+
+    if (req.user.role === desiredRole) {
+      return res.json({ role: desiredRole });
+    }
+
+    const token = parseCookies(req)[SESSION_COOKIE];
+    await run('UPDATE sessions SET role = ? WHERE token = ?', [desiredRole, token]);
+    req.user.role = desiredRole;
+    res.json({ role: desiredRole });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -476,13 +512,22 @@ app.get('/api/teachers', requireAuth, async (req, res) => {
        ORDER BY name ASC`
     );
 
-    // If no teacher emails configured, return session teachers
+    // If no teacher emails configured, return session teachers plus any dual-role teachers.
     if (teacherEmails.size === 0) {
-      return res.json(sessionTeachers);
+      const teachers = [...sessionTeachers];
+      dualRoleEmails.forEach((email) => {
+        if (!teachers.some((teacher) => teacher.email.toLowerCase() === email)) {
+          const name = email.split('@')[0].split('.').map((part) =>
+            part.charAt(0).toUpperCase() + part.slice(1)
+          ).join(' ');
+          teachers.push({ name, email });
+        }
+      });
+      return res.json(teachers);
     }
 
-    // Get all teacher emails from environment
-    const allTeacherEmails = Array.from(teacherEmails);
+    // Get all teacher emails from environment plus any dual-role teachers.
+    const allTeacherEmails = Array.from(new Set([...teacherEmails, ...dualRoleEmails]));
 
     // Create a map of email to name from sessions
     const emailToName = new Map();
