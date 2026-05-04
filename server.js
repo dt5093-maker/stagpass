@@ -708,6 +708,6 @@ app.post('/api/passes/:id/end', requireAuth, async (req, res) => {
 app.get('/passes', (req, res) => res.redirect(307, '/api/passes'));
 app.post('/end/:id', (req, res) => res.redirect(307, `/api/passes/${req.params.id}/end`));
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Stag Pass running at http://localhost:${PORT}`);
 });
