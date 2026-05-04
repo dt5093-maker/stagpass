@@ -19,6 +19,18 @@ const lookupResults = document.getElementById('lookup-results');
 
 let activePasses = [];
 let currentUser = null;
+const socket = io();
+
+// Socket.IO event listeners for real-time updates
+socket.on('passes-updated', () => {
+  if (currentUser) {
+    if (currentUser.role === 'teacher') {
+      loadTeacherDashboard();
+    } else {
+      loadStudentDashboard();
+    }
+  }
+});
 
 function show(element) {
   element.classList.remove('hidden');
@@ -497,9 +509,18 @@ boot().catch((err) => {
   document.getElementById('auth-copy').textContent = err.message;
 });
 setInterval(updateClock, 1000);
-setInterval(renderActive, 15000);
+// Reduced polling frequency since we now have real-time updates via Socket.IO
+setInterval(renderActive, 300000); // Every 5 minutes as fallback
 setInterval(() => {
   if (!currentUser) return;
   if (currentUser.role === 'teacher') loadTeacherDashboard().catch(() => {});
   else loadStudentDashboard().catch(() => {});
 }, 30000);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then((registration) => console.log('Service worker registered:', registration.scope))
+      .catch((error) => console.warn('Service worker registration failed:', error));
+  });
+}

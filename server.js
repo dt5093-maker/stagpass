@@ -2,11 +2,15 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 const sqlite3 = require('sqlite3').verbose();
 
 loadEnvFile();
 
 const app = express();
+const server = createServer(app);
+const io = new Server(server);
 const PORT = process.env.PORT || 3000;
 const MAX_LIMIT = 200;
 const SESSION_COOKIE = 'hallpass_session';
@@ -116,6 +120,20 @@ db.serialize(() => {
   db.run('UPDATE passes SET requestedAt = startTime WHERE requestedAt IS NULL');
   db.run("UPDATE passes SET status = 'returned' WHERE endTime IS NOT NULL AND status = 'approved'");
 });
+
+// Socket.IO setup
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+function emitPassUpdate() {
+  // Emit to all connected clients that passes have been updated
+  io.emit('passes-updated');
+}
 
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -621,6 +639,7 @@ app.post('/api/requests', requireAuth, async (req, res) => {
       [req.user.name, req.user.email, destination, room, notes, teacher, maxMinutes, time, time, time]
     );
     const pass = await loadPass(result.lastID);
+    emitPassUpdate();
     res.status(201).json(passResponse(pass));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -658,6 +677,7 @@ app.post('/api/requests/:id/approve', requireAuth, requireTeacher, async (req, r
        WHERE id = ?`,
       [req.user.name, req.user.name, req.user.email, time, time, req.params.id]
     );
+    emitPassUpdate();
     res.json(passResponse(await loadPass(req.params.id)));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -684,6 +704,7 @@ app.post('/api/requests/:id/deny', requireAuth, requireTeacher, async (req, res)
        WHERE id = ?`,
       [req.user.name, req.user.email, Date.now(), reason, req.params.id]
     );
+    emitPassUpdate();
     res.json(passResponse(await loadPass(req.params.id)));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -709,6 +730,7 @@ app.post('/api/passes/:id/end', requireAuth, async (req, res) => {
        WHERE id = ?`,
       [Date.now(), req.params.id]
     );
+    emitPassUpdate();
     res.json(passResponse(await loadPass(req.params.id)));
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -719,6 +741,6 @@ app.post('/api/passes/:id/end', requireAuth, async (req, res) => {
 app.get('/passes', (req, res) => res.redirect(307, '/api/passes'));
 app.post('/end/:id', (req, res) => res.redirect(307, `/api/passes/${req.params.id}/end`));
 
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Stag Pass running at http://localhost:${PORT}`);
 });
