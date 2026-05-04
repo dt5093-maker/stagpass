@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stag Pass</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Cheverus High School</p>
+      <h1>Stag Pass</h1>
+    </div>
+    <div class="topbar-actions">
+      <div class="clock" id="clock">--:--</div>
+      <div class="user-chip hidden" id="user-chip">
+        <span id="user-name"></span>
+        <small id="user-role"></small>
+      </div>
+      <button class="ghost-button hidden" id="logout-button" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="auth-screen hidden" id="auth-screen">
+      <div class="panel auth-panel">
+        <p class="eyebrow">Google Sign-In Required</p>
+        <h2 id="auth-title">Sign in to request or approve passes</h2>
+        <p id="auth-copy">
+          Students request passes from their own school Google account. Teachers sign in to approve, deny, and return passes.
+        </p>
+        <a class="primary-link" href="/auth/google">Sign in with Google</a>
+      </div>
+    </section>
+
+    <section class="auth-screen hidden" id="setup-screen">
+      <div class="panel auth-panel">
+        <p class="eyebrow">Setup Needed</p>
+        <h2>Connect Google sign-in</h2>
+        <p id="setup-copy">
+          Add Google OAuth credentials before using Stag Pass. Your redirect URI should be:
+        </p>
+        <code id="redirect-uri"></code>
+        <p>
+          Then restart with <strong>GOOGLE_CLIENT_ID</strong>, <strong>GOOGLE_CLIENT_SECRET</strong>, and <strong>TEACHER_EMAILS</strong>.
+        </p>
+      </div>
+    </section>
+
+    <section class="app-shell hidden" id="student-view">
+      <section class="panel create-panel" aria-labelledby="request-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Student Request</p>
+            <h2 id="request-title">Ask for a pass</h2>
+          </div>
+        </div>
+
+        <form id="request-form">
+          <label for="destination">
+            Destination
+            <select id="destination" name="destination" required>
+              <option value="">Choose destination</option>
+              <option>Bathroom</option>
+              <option>Nurse</option>
+              <option>Main Office</option>
+              <option>Guidance</option>
+              <option>Library</option>
+              <option>Locker</option>
+              <option>Other</option>
+            </select>
+          </label>
+
+          <label for="teacher">
+            Teacher
+            <select id="teacher" name="teacher" required>
+              <option value="">Choose teacher</option>
+            </select>
+          </label>
+
+          <div class="form-grid">
+            <label for="room">
+              Current room
+              <input id="room" name="room" autocomplete="off" placeholder="214">
+            </label>
+
+            <label for="maxMinutes">
+              Time requested
+              <select id="maxMinutes" name="maxMinutes">
+                <option value="5">5 minutes</option>
+                <option value="10" selected>10 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="20">20 minutes</option>
+                <option value="30">30 minutes</option>
+              </select>
+            </label>
+          </div>
+
+          <label for="notes">
+            Note for teacher
+            <input id="notes" name="notes" autocomplete="off" placeholder="Optional">
+          </label>
+
+          <button class="primary-button" type="submit">Request Pass</button>
+          <p class="message" id="student-message" role="status"></p>
+        </form>
+      </section>
+
+      <section class="dashboard">
+        <section class="panel" aria-labelledby="my-requests-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">My Passes</p>
+              <h2 id="my-requests-title">Request status</h2>
+            </div>
+            <button class="ghost-button" id="student-refresh-button" type="button">Refresh</button>
+          </div>
+          <div class="pass-list" id="my-requests-list"></div>
+        </section>
+      </section>
+    </section>
+
+    <section class="app-shell hidden" id="teacher-view">
+      <section class="dashboard full-width">
+        <div class="stats" aria-label="Stag Pass stats">
+          <article>
+            <span id="pending-count">0</span>
+            <p>Pending</p>
+          </article>
+          <article>
+            <span id="active-count">0</span>
+            <p>Active</p>
+          </article>
+          <article>
+            <span id="overdue-count">0</span>
+            <p>Overdue</p>
+          </article>
+          <article>
+            <span id="today-count">0</span>
+            <p>Today</p>
+          </article>
+          <article>
+            <span id="average-minutes">0</span>
+            <p>Avg min</p>
+          </article>
+        </div>
+
+        <section class="panel" aria-labelledby="pending-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Approval Queue</p>
+              <h2 id="pending-title">Pending requests</h2>
+            </div>
+            <button class="ghost-button" id="teacher-refresh-button" type="button">Refresh</button>
+          </div>
+          <div class="pass-list" id="pending-list"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="lookup-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Student Lookup</p>
+              <h2 id="lookup-title">Pass usage</h2>
+            </div>
+          </div>
+
+          <form class="lookup-form" id="lookup-form">
+            <label for="lookup-name">
+              Student name
+              <input id="lookup-name" name="name" autocomplete="off" placeholder="Search by name" required>
+            </label>
+            <button class="primary-button" type="submit">Search</button>
+          </form>
+
+          <div class="lookup-results" id="lookup-results">
+            <div class="empty-state">Search a student to see pass usage.</div>
+          </div>
+        </section>
+
+        <section class="panel" aria-labelledby="active-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Live Board</p>
+              <h2 id="active-title">Active passes</h2>
+            </div>
+          </div>
+          <div class="pass-list" id="active-list"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="history-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Recent Returns</p>
+              <h2 id="history-title">Pass history</h2>
+            </div>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
