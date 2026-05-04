@@ -5,7 +5,6 @@ const teacherView = document.getElementById('teacher-view');
 const userChip = document.getElementById('user-chip');
 const userName = document.getElementById('user-name');
 const userRole = document.getElementById('user-role');
-const roleSwitchButton = document.getElementById('role-switch-button');
 const logoutButton = document.getElementById('logout-button');
 const requestForm = document.getElementById('request-form');
 const studentMessage = document.getElementById('student-message');
@@ -39,40 +38,6 @@ function show(element) {
 
 function hide(element) {
   element.classList.add('hidden');
-}
-
-function setRoleSwitchButton(user) {
-  if (!user?.roles || user.roles.length < 2) {
-    hide(roleSwitchButton);
-    return;
-  }
-
-  const nextRole = user.role === 'teacher' ? 'student' : 'teacher';
-  roleSwitchButton.textContent = `Switch to ${nextRole}`;
-  show(roleSwitchButton);
-}
-
-async function switchRole() {
-  if (!currentUser?.roles || currentUser.roles.length < 2) return;
-
-  const nextRole = currentUser.role === 'teacher' ? 'student' : 'teacher';
-  await api('/api/role', {
-    method: 'POST',
-    body: JSON.stringify({ role: nextRole }),
-  });
-
-  currentUser.role = nextRole;
-  setRoleSwitchButton(currentUser);
-  userRole.textContent = nextRole;
-  if (nextRole === 'teacher') {
-    show(teacherView);
-    hide(studentView);
-    await loadTeacherDashboard();
-  } else {
-    show(studentView);
-    hide(teacherView);
-    await loadStudentDashboard();
-  }
 }
 
 function formatTime(timestamp) {
@@ -499,7 +464,6 @@ function showSignedInUser(user) {
   userRole.textContent = user.role;
   show(userChip);
   show(logoutButton);
-  setRoleSwitchButton(user);
 }
 
 async function boot() {
@@ -534,7 +498,6 @@ async function boot() {
 requestForm.addEventListener('submit', requestPass);
 studentRefreshButton.addEventListener('click', loadStudentDashboard);
 teacherRefreshButton.addEventListener('click', loadTeacherDashboard);
-roleSwitchButton.addEventListener('click', switchRole);
 lookupForm.addEventListener('submit', lookupStudent);
 logoutButton.addEventListener('click', logout);
 
