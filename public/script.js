@@ -459,8 +459,7 @@ async function boot() {
   const me = await api('/api/me');
 
   if (!me.authConfigured || !me.hasTeacherList) {
-    document.getElementById('redirect-uri').textContent =
-      `${window.location.origin}/auth/google/callback`;
+    document.getElementById('redirect-uri').textContent = me.redirectUri;
     document.getElementById('setup-copy').textContent = !me.authConfigured
       ? 'Add Google OAuth credentials before using Stag Pass. Your redirect URI should be:'
       : 'Teacher accounts must use lastname@cheverus.org and student accounts must use lastname.firstname@cheverus.org. Your Google redirect URI is:';

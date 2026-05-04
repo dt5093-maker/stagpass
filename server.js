@@ -14,6 +14,16 @@ const OAUTH_STATE_COOKIE = 'hallpass_oauth_state';
 const SESSION_DAYS = 7;
 const dbPath = process.env.DB_PATH || './passes.db';
 
+// Function to get base URL, preferring explicit BASE_URL env var,
+// then X-Forwarded headers (for reverse proxy), then constructing from request
+function getBaseUrl(req) {
+  if (process.env.BASE_URL) return process.env.BASE_URL;
+  
+  const proto = req.get('X-Forwarded-Proto') || (req.secure ? 'https' : 'http');
+  const host = req.get('X-Forwarded-Host') || req.get('Host') || 'localhost';
+  return `${proto}://${host}`;
+}
+
 const baseUrl = process.env.BASE_URL || `http://localhost:${PORT}`;
 const teacherEmails = new Set(
   (process.env.TEACHER_EMAILS || '')
@@ -265,6 +275,7 @@ app.get('/api/me', async (req, res) => {
       authConfigured: isGoogleConfigured(),
       allowedDomain: allowedDomain || null,
       hasTeacherList: teacherEmails.size > 0 || Boolean(teacherEmailPattern),
+      redirectUri: `${getBaseUrl(req)}/auth/google/callback`,
       user: publicUser(user),
     });
   } catch (err) {
@@ -280,7 +291,7 @@ app.get('/auth/google', (req, res) => {
   const state = crypto.randomBytes(24).toString('hex');
   const params = new URLSearchParams({
     client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: `${baseUrl}/auth/google/callback`,
+    redirect_uri: `${getBaseUrl(req)}/auth/google/callback`,
     response_type: 'code',
     scope: 'openid email profile',
     state,
@@ -306,7 +317,7 @@ app.get('/auth/google/callback', async (req, res) => {
         code: req.query.code,
         client_id: process.env.GOOGLE_CLIENT_ID,
         client_secret: process.env.GOOGLE_CLIENT_SECRET,
-        redirect_uri: `${baseUrl}/auth/google/callback`,
+        redirect_uri: `${getBaseUrl(req)}/auth/google/callback`,
         grant_type: 'authorization_code',
       }),
     });
@@ -356,7 +367,7 @@ app.get('/auth/google/callback', async (req, res) => {
     clearCookie(res, OAUTH_STATE_COOKIE);
     setCookie(res, SESSION_COOKIE, token, {
       maxAge: SESSION_DAYS * 24 * 60 * 60,
-      secure: baseUrl.startsWith('https://'),
+      secure: getBaseUrl(req).startsWith('https://'),
     });
     res.redirect('/');
   } catch (err) {
