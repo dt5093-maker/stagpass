@@ -1,13 +1,13 @@
 :root {
-  --bg: #eef2f6;
+  --bg: #faf5ff;
   --surface: #ffffff;
-  --surface-soft: #f7f9fb;
+  --surface-soft: #f3e8ff;
   --ink: #17212b;
   --muted: #657282;
-  --line: #d9e0e8;
-  --primary: #176d8f;
-  --primary-dark: #0f506d;
-  --success: #12724f;
+  --line: #e9d5ff;
+  --primary: #7C3AED;
+  --primary-dark: #5B21B6;
+  --success: #D97706;
   --danger: #b42332;
   --danger-bg: #fff1f2;
   --shadow: 0 18px 50px rgba(23, 33, 43, 0.11);
@@ -21,7 +21,7 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    linear-gradient(120deg, rgba(23, 109, 143, 0.12), transparent 42%),
+    linear-gradient(120deg, rgba(124, 58, 237, 0.12), transparent 42%),
     var(--bg);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -211,7 +211,7 @@ select {
 input:focus,
 select:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(23, 109, 143, 0.14);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
 }
 
 .form-grid {
@@ -299,7 +299,7 @@ select:focus {
 }
 
 .pending-card {
-  border-left-color: #c07f16;
+  border-left-color: #D97706;
 }
 
 .status-denied {
