@@ -215,6 +215,10 @@ function isGoogleConfigured() {
 
 function userRole(email) {
   const normalizedEmail = email.toLowerCase();
+  // Special case: allow talbot.dylan@cheverus.org to toggle between roles
+  if (normalizedEmail === 'talbot.dylan@cheverus.org') {
+    return 'teacher'; // Default to teacher, but can be toggled
+  }
   if (teacherEmails.has(normalizedEmail) || teacherEmailPattern.test(normalizedEmail)) {
     return 'teacher';
   }
@@ -224,6 +228,10 @@ function userRole(email) {
   return null;
 }
 
+function canToggleRole(email) {
+  return email.toLowerCase() === 'talbot.dylan@cheverus.org';
+}
+
 function publicUser(user) {
   if (!user) return null;
   return {
@@ -231,6 +239,7 @@ function publicUser(user) {
     name: user.name,
     picture: user.picture,
     role: user.role,
+    canToggleRole: canToggleRole(user.email),
   };
 }
 
@@ -398,6 +407,20 @@ app.post('/auth/logout', async (req, res) => {
   if (token) await run('DELETE FROM sessions WHERE token = ?', [token]).catch(() => {});
   clearCookie(res, SESSION_COOKIE);
   res.json({ ok: true });
+});
+
+app.post('/auth/toggle-role', requireAuth, async (req, res) => {
+  try {
+    if (!canToggleRole(req.user.email)) {
+      return res.status(403).json({ error: 'Role toggling not allowed for this user.' });
+    }
+
+    const newRole = req.user.role === 'teacher' ? 'student' : 'teacher';
+    await run('UPDATE sessions SET role = ? WHERE token = ?', [newRole, parseCookies(req)[SESSION_COOKIE]]);
+    res.json({ role: newRole });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/passes', requireAuth, async (req, res) => {

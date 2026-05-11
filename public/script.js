@@ -5,6 +5,7 @@ const teacherView = document.getElementById('teacher-view');
 const userChip = document.getElementById('user-chip');
 const userName = document.getElementById('user-name');
 const userRole = document.getElementById('user-role');
+const toggleRoleButton = document.getElementById('toggle-role-button');
 const logoutButton = document.getElementById('logout-button');
 const requestForm = document.getElementById('request-form');
 const studentMessage = document.getElementById('student-message');
@@ -453,9 +454,27 @@ async function lookupStudent(event) {
   }
 }
 
-async function logout() {
-  await api('/auth/logout', { method: 'POST' });
-  window.location.reload();
+async function toggleRole() {
+  try {
+    const response = await api('/auth/toggle-role', { method: 'POST' });
+    currentUser.role = response.role;
+    userRole.textContent = response.role;
+    toggleRoleButton.textContent = response.role === 'teacher' ? 'Switch to Student' : 'Switch to Teacher';
+    
+    // Hide current view and show new view
+    hide(studentView);
+    hide(teacherView);
+    
+    if (response.role === 'teacher') {
+      show(teacherView);
+      await loadTeacherDashboard();
+    } else {
+      show(studentView);
+      await loadStudentDashboard();
+    }
+  } catch (err) {
+    console.error('Failed to toggle role:', err);
+  }
 }
 
 function showSignedInUser(user) {
@@ -464,6 +483,11 @@ function showSignedInUser(user) {
   userRole.textContent = user.role;
   show(userChip);
   show(logoutButton);
+  
+  if (user.canToggleRole) {
+    show(toggleRoleButton);
+    toggleRoleButton.textContent = user.role === 'teacher' ? 'Switch to Student' : 'Switch to Teacher';
+  }
 }
 
 async function boot() {
@@ -500,6 +524,7 @@ studentRefreshButton.addEventListener('click', loadStudentDashboard);
 teacherRefreshButton.addEventListener('click', loadTeacherDashboard);
 lookupForm.addEventListener('submit', lookupStudent);
 logoutButton.addEventListener('click', logout);
+toggleRoleButton.addEventListener('click', toggleRole);
 
 boot().catch((err) => {
   hide(studentView);
