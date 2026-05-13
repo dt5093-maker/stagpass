@@ -1,4 +1,4 @@
-const CACHE_NAME = 'stag-pass-v1';
+const CACHE_NAME = 'stag-pass-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -42,19 +42,51 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (event.request.mode === 'navigate' || requestUrl.pathname === '/' || requestUrl.pathname === '/index.html') {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+
+  if (ASSETS.includes(requestUrl.pathname)) {
+    event.respondWith(staleWhileRevalidate(event.request));
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-      return fetch(event.request)
+    caches.match(event.request).then((cachedResponse) => cachedResponse || fetch(event.request))
+  );
+});
+
+function networkFirst(request) {
+  return fetch(request)
+    .then((networkResponse) => {
+      if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+        const responseClone = networkResponse.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+      }
+      return networkResponse;
+    })
+    .catch(() => caches.match(request).then((cachedResponse) => cachedResponse || caches.match('/index.html')));
+}
+
+function staleWhileRevalidate(request) {
+  return caches.open(CACHE_NAME).then((cache) =>
+    cache.match(request).then((cachedResponse) => {
+      const networkFetch = fetch(request)
         .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-            return networkResponse;
+          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            cache.put(request, networkResponse.clone());
           }
-          const responseClone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
           return networkResponse;
         })
-        .catch(() => caches.match('/index.html'));
+        .catch(() => null);
+      return cachedResponse || networkFetch;
     })
   );
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
