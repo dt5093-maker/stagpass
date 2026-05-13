@@ -64,6 +64,7 @@ function loadEnvFile() {
 
 app.use(express.json());
 app.use(express.static('public'));
+app.use(express.static('.'));
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new sqlite3.Database(dbPath);
