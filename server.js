@@ -34,8 +34,9 @@ const teacherEmails = new Set(
     .split(',')
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean)
-);
-const allowedDomain = (process.env.ALLOWED_GOOGLE_DOMAIN || 'cheverus.org').trim().toLowerCase();
+);const specialTeacherEmails = new Set([
+  'talbotdylan5093@gmail.com',
+]);const allowedDomain = (process.env.ALLOWED_GOOGLE_DOMAIN || 'cheverus.org').trim().toLowerCase();
 const teacherEmailPattern = new RegExp(
   process.env.TEACHER_EMAIL_PATTERN || '^[a-z]+@cheverus\\.org$',
   'i'
@@ -74,7 +75,23 @@ db.serialize(() => {
       name TEXT NOT NULL,
       destination TEXT NOT NULL,
       startTime INTEGER NOT NULL,
-      endTime INTEGER
+      endTime INTEGER,
+      teacher TEXT,
+      teacherEmail TEXT,
+      room TEXT,
+      notes TEXT,
+      maxMinutes INTEGER NOT NULL DEFAULT 10,
+      createdAt INTEGER,
+      status TEXT NOT NULL DEFAULT 'approved',
+      studentEmail TEXT,
+      requestedAt INTEGER,
+      approvedAt INTEGER,
+      approvedByName TEXT,
+      approvedByEmail TEXT,
+      deniedAt INTEGER,
+      deniedByName TEXT,
+      deniedByEmail TEXT,
+      deniedReason TEXT
     )
   `);
 
@@ -92,6 +109,7 @@ db.serialize(() => {
 
   const migrations = [
     ['teacher', 'TEXT'],
+    ['teacherEmail', 'TEXT'],
     ['room', 'TEXT'],
     ['notes', 'TEXT'],
     ['maxMinutes', 'INTEGER NOT NULL DEFAULT 10'],
@@ -119,6 +137,11 @@ db.serialize(() => {
   db.run('UPDATE passes SET createdAt = startTime WHERE createdAt IS NULL');
   db.run('UPDATE passes SET requestedAt = startTime WHERE requestedAt IS NULL');
   db.run("UPDATE passes SET status = 'returned' WHERE endTime IS NOT NULL AND status = 'approved'");
+  db.run('CREATE INDEX IF NOT EXISTS idx_passes_teacherEmail ON passes(teacherEmail)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_passes_studentEmail ON passes(studentEmail)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_passes_status ON passes(status)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_passes_requestedAt ON passes(requestedAt)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_passes_startTime ON passes(startTime)');
 });
 
 // Socket.IO setup
@@ -215,7 +238,7 @@ function isGoogleConfigured() {
 
 function userRole(email) {
   const normalizedEmail = email.toLowerCase();
-  if (teacherEmails.has(normalizedEmail) || teacherEmailPattern.test(normalizedEmail)) {
+  if (teacherEmails.has(normalizedEmail) || specialTeacherEmails.has(normalizedEmail) || teacherEmailPattern.test(normalizedEmail)) {
     return 'teacher';
   }
   if (studentEmailPattern.test(normalizedEmail)) {
@@ -226,6 +249,20 @@ function userRole(email) {
 
 function canToggleRole() {
   return false;
+}
+
+async function getTeacherNameByEmail(email) {
+  const normalized = String(email || '').toLowerCase();
+  const row = await get(
+    `SELECT name FROM sessions
+     WHERE email = ?
+     AND role = 'teacher'
+     ORDER BY createdAt DESC
+     LIMIT 1`,
+    [normalized]
+  );
+  if (row?.name) return row.name;
+  return normalized.split('@')[0].split('.').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
 function publicUser(user) {
@@ -359,7 +396,7 @@ app.get('/auth/google/callback', async (req, res) => {
 
     const email = profile.email.toLowerCase();
     const domain = email.split('@')[1] || '';
-    if (allowedDomain && domain !== allowedDomain) {
+    if (allowedDomain && domain !== allowedDomain && !specialTeacherEmails.has(email)) {
       return res.status(403).send(`Use your ${allowedDomain} Google account.`);
     }
 
@@ -495,9 +532,9 @@ app.get('/api/teachers', requireAuth, async (req, res) => {
        ORDER BY name ASC`
     );
 
-    // If no teacher emails configured, return session teachers
+    // If no teacher emails configured, return session teachers except dev-only accounts
     if (teacherEmails.size === 0) {
-      return res.json(sessionTeachers);
+      return res.json(sessionTeachers.filter((teacher) => !specialTeacherEmails.has(teacher.email.toLowerCase())));
     }
 
     // Get all teacher emails from environment
@@ -534,9 +571,9 @@ app.get('/api/requests', requireAuth, requireTeacher, async (req, res) => {
     const rows = await all(
       `SELECT * FROM passes
        WHERE status = 'pending'
-       AND teacher = ?
+       AND (teacherEmail = ? OR teacher = ?)
        ORDER BY requestedAt ASC`,
-      [req.user.name]
+      [req.user.email, req.user.name]
     );
     res.json(rows.map(passResponse));
   } catch (err) {
@@ -596,6 +633,7 @@ app.get('/api/students/search', requireAuth, requireTeacher, async (req, res) =>
     res.json({
       query: name,
       matchedName: passes[0]?.name || null,
+      studentEmail: passes[0]?.studentEmail || null,
       summary: {
         total: passes.length,
         active: active.length,
@@ -610,11 +648,107 @@ app.get('/api/students/search', requireAuth, requireTeacher, async (req, res) =>
   }
 });
 
+app.get('/api/students/:email/stats', requireAuth, requireTeacher, async (req, res) => {
+  const email = cleanText(req.params.email).toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: 'Student email is required.' });
+  }
+
+  try {
+    const rows = await all(
+      `SELECT * FROM passes
+       WHERE studentEmail = ?
+       ORDER BY requestedAt DESC`,
+      [email]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'No records found for that student.' });
+    }
+
+    const completed = rows.filter((pass) => pass.status === 'returned');
+    const active = rows.filter((pass) => pass.status === 'approved' && !pass.endTime);
+    const overdue = active.filter((pass) => passResponse(pass).isOverdue);
+    const averageMinutes = completed.length
+      ? Math.round(
+          completed.reduce((sum, pass) => sum + Math.max(0, (pass.endTime - pass.startTime) / 60000), 0) / completed.length
+        )
+      : 0;
+    const totalMinutes = completed.reduce((sum, pass) => sum + Math.max(0, (pass.endTime - pass.startTime) / 60000), 0);
+    const destinations = [...new Set(rows.map((pass) => pass.destination))];
+
+    res.json({
+      studentEmail: email,
+      studentName: rows[0].name,
+      summary: {
+        total: rows.length,
+        active: active.length,
+        returned: completed.length,
+        overdue: overdue.length,
+        averageMinutes,
+        totalMinutes,
+        uniqueDestinations: destinations,
+      },
+      passes: rows.map(passResponse),
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/students/:email/export', requireAuth, requireTeacher, async (req, res) => {
+  const email = cleanText(req.params.email).toLowerCase();
+  if (!email) {
+    return res.status(400).json({ error: 'Student email is required.' });
+  }
+
+  try {
+    const rows = await all(
+      `SELECT * FROM passes
+       WHERE studentEmail = ?
+       ORDER BY requestedAt DESC`,
+      [email]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'No records found for that student.' });
+    }
+
+    const csvRows = [
+      ['Student Name', 'Student Email', 'Destination', 'Teacher', 'Teacher Email', 'Status', 'Requested At', 'Start Time', 'End Time', 'Elapsed Minutes', 'Max Minutes', 'Notes'].join(','),
+      ...rows.map((pass) => {
+        const record = passResponse(pass);
+        return [
+          JSON.stringify(record.name),
+          JSON.stringify(record.studentEmail || ''),
+          JSON.stringify(record.destination),
+          JSON.stringify(record.teacher || ''),
+          JSON.stringify(record.teacherEmail || ''),
+          JSON.stringify(record.status),
+          JSON.stringify(record.requestedAt ? new Date(record.requestedAt).toISOString() : ''),
+          JSON.stringify(record.startTime ? new Date(record.startTime).toISOString() : ''),
+          JSON.stringify(record.endTime ? new Date(record.endTime).toISOString() : ''),
+          JSON.stringify(record.elapsedMinutes),
+          JSON.stringify(record.maxMinutes),
+          JSON.stringify(record.notes || ''),
+        ].join(',');
+      }),
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="student-${email}.csv"`);
+    res.send(csvRows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/requests', requireAuth, async (req, res) => {
   const destination = cleanText(req.body.destination);
   const room = cleanText(req.body.room);
   const notes = cleanText(req.body.notes);
-  const teacher = cleanText(req.body.teacher);
+  const teacherEmail = cleanText(req.body.teacherEmail).toLowerCase();
+  const teacherName = cleanText(req.body.teacher || '');
   const maxMinutes = Number.parseInt(req.body.maxMinutes, 10) || 10;
 
   if (req.user.role !== 'student') {
@@ -625,12 +759,17 @@ app.post('/api/requests', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Destination is required.' });
   }
 
-  if (!teacher) {
+  if (!teacherEmail) {
     return res.status(400).json({ error: 'Teacher is required.' });
   }
 
   if (maxMinutes < 1 || maxMinutes > 120) {
     return res.status(400).json({ error: 'Pass length must be between 1 and 120 minutes.' });
+  }
+
+  const validTeacher = teacherEmails.has(teacherEmail) || teacherEmailPattern.test(teacherEmail);
+  if (!validTeacher) {
+    return res.status(400).json({ error: 'Selected teacher is not valid.' });
   }
 
   try {
@@ -650,12 +789,13 @@ app.post('/api/requests', requireAuth, async (req, res) => {
       });
     }
 
+    const teacherDisplayName = teacherName || (await getTeacherNameByEmail(teacherEmail));
     const time = Date.now();
     const result = await run(
       `INSERT INTO passes
-       (name, studentEmail, destination, room, notes, teacher, maxMinutes, status, startTime, requestedAt, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
-      [req.user.name, req.user.email, destination, room, notes, teacher, maxMinutes, time, time, time]
+       (name, studentEmail, destination, room, notes, teacher, teacherEmail, maxMinutes, status, startTime, requestedAt, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [req.user.name, req.user.email, destination, room, notes, teacherDisplayName, teacherEmail, maxMinutes, time, time, time]
     );
     const pass = await loadPass(result.lastID);
     emitPassUpdate();

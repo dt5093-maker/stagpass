@@ -309,8 +309,21 @@ function renderTeacherSelect(teachers) {
   select.replaceChildren();
   select.appendChild(new Option('Choose teacher', ''));
   teachers.forEach((teacher) => {
-    select.appendChild(new Option(teacher.name, teacher.name));
+    select.appendChild(new Option(teacher.name, teacher.email));
   });
+}
+
+function renderOverdue(passes) {
+  const overdueList = document.getElementById('overdue-list');
+  overdueList.replaceChildren();
+
+  const overduePasses = passes.filter((pass) => pass.isOverdue && !pass.endTime);
+  if (!overduePasses.length) {
+    overdueList.appendChild(emptyState('No overdue passes.'));
+    return;
+  }
+
+  overduePasses.forEach((pass) => overdueList.appendChild(activePassCard(pass)));
 }
 
 function renderHistory(passes) {
@@ -349,11 +362,22 @@ function renderLookupResults(data) {
       <article><span>${data.summary.total}</span><p>Total</p></article>
       <article><span>${data.summary.active}</span><p>Active</p></article>
       <article><span>${data.summary.returned}</span><p>Returned</p></article>
+      <article><span>${data.summary.overdue}</span><p>Overdue</p></article>
       <article><span>${data.summary.averageMinutes}</span><p>Avg min</p></article>
     </div>
   `;
   header.querySelector('h3').textContent = data.matchedName;
   lookupResults.appendChild(header);
+
+  if (data.studentEmail) {
+    const exportLink = document.createElement('a');
+    exportLink.className = 'ghost-button';
+    exportLink.href = `/api/students/${encodeURIComponent(data.studentEmail)}/export`;
+    exportLink.textContent = 'Export CSV';
+    exportLink.target = '_blank';
+    exportLink.rel = 'noopener';
+    lookupResults.appendChild(exportLink);
+  }
 
   const rows = document.createElement('div');
   rows.className = 'lookup-pass-list';
@@ -371,6 +395,7 @@ async function loadTeacherDashboard() {
 
   activePasses = passes;
   renderPending(pending);
+  renderOverdue(passes);
   renderActive();
   renderHistory(history);
   renderStats(stats);
@@ -393,6 +418,7 @@ async function requestPass(event) {
 
   const formData = new FormData(requestForm);
   const payload = Object.fromEntries(formData.entries());
+  payload.teacher = requestForm.querySelector('#teacher option:checked')?.textContent || '';
 
   try {
     await api('/api/requests', {

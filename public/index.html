@@ -78,7 +78,7 @@
 
           <label for="teacher">
             Teacher
-            <select id="teacher" name="teacher" required>
+            <select id="teacher" name="teacherEmail" required>
               <option value="">Choose teacher</option>
             </select>
           </label>
@@ -180,6 +180,16 @@
           <div class="lookup-results" id="lookup-results">
             <div class="empty-state">Search a student to see pass usage.</div>
           </div>
+        </section>
+
+        <section class="panel" aria-labelledby="overdue-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Overdue</p>
+              <h2 id="overdue-title">Overdue passes</h2>
+            </div>
+          </div>
+          <div class="pass-list" id="overdue-list"></div>
         </section>
 
         <section class="panel" aria-labelledby="active-title">
