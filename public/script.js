@@ -477,6 +477,22 @@ async function toggleRole() {
   }
 }
 
+async function logout() {
+  try {
+    await api('/auth/logout', { method: 'POST' });
+  } catch (err) {
+    console.warn('Logout request failed:', err);
+  }
+
+  currentUser = null;
+  hide(userChip);
+  hide(toggleRoleButton);
+  hide(logoutButton);
+  hide(studentView);
+  hide(teacherView);
+  show(authScreen);
+}
+
 function showSignedInUser(user) {
   currentUser = user;
   userName.textContent = user.name;

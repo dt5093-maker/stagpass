@@ -215,10 +215,6 @@ function isGoogleConfigured() {
 
 function userRole(email) {
   const normalizedEmail = email.toLowerCase();
-  // Special case: allow talbot.dylan@cheverus.org to toggle between roles
-  if (normalizedEmail === 'talbot.dylan@cheverus.org') {
-    return 'teacher'; // Default to teacher, but can be toggled
-  }
   if (teacherEmails.has(normalizedEmail) || teacherEmailPattern.test(normalizedEmail)) {
     return 'teacher';
   }
@@ -228,8 +224,8 @@ function userRole(email) {
   return null;
 }
 
-function canToggleRole(email) {
-  return email.toLowerCase() === 'talbot.dylan@cheverus.org';
+function canToggleRole() {
+  return false;
 }
 
 function publicUser(user) {
